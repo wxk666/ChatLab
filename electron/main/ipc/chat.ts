@@ -3,6 +3,8 @@
  */
 
 import { ipcMain, app, dialog } from 'electron'
+import * as fs from 'fs'
+import * as path from 'path'
 import * as databaseCore from '../database/core'
 import * as worker from '../worker/workerManager'
 import * as parser from '../parser'
@@ -92,10 +94,66 @@ export function registerChatHandlers(ctx: IpcContext): void {
   })
 
   /**
+   * 选择聊天记录文件夹
+   * 用于导出目录导入：在文件夹内自动定位聊天记录文件，
+   * 并把文件夹根目录作为媒体（表情包/图片）解析根路径
+   */
+  ipcMain.handle('chat:selectFolder', async () => {
+    try {
+      const { canceled, filePaths } = await dialog.showOpenDialog({
+        title: '选择聊天记录所在文件夹',
+        defaultPath: app.getPath('documents'),
+        properties: ['openDirectory'],
+        buttonLabel: '导入此文件夹',
+      })
+
+      if (canceled || filePaths.length === 0) {
+        return null
+      }
+
+      const rootDir = filePaths[0]
+      const candidates = findChatFiles(rootDir)
+      console.log('[IpcMain] Folder selected:', rootDir, 'candidates:', candidates.length)
+
+      if (candidates.length === 0) {
+        return { error: '该文件夹内没有找到可识别的聊天记录文件（json/jsonl/txt）' }
+      }
+
+      const filePath = candidates[0]
+      const formatFeature = detectFormat(filePath)
+      if (!formatFeature) {
+        return { error: '该文件夹内的文件无法识别格式' }
+      }
+
+      return { filePath, format: formatFeature.name, rootDir }
+    } catch (error) {
+      console.error('[IpcMain] Error selecting folder:', error)
+      return { error: String(error) }
+    }
+  })
+
+  /**
    * 导入聊天记录（流式版本）
    */
-  ipcMain.handle('chat:import', async (_, filePath: string) => {
-    console.log('[IpcMain] chat:import called with:', filePath)
+  ipcMain.handle('chat:import', async (_, inputPath: string, mediaRoot?: string) => {
+    console.log('[IpcMain] chat:import called with:', inputPath)
+
+    // 支持直接传入文件夹：自动定位聊天记录文件，并把文件夹作为媒体根目录
+    let filePath = inputPath
+    let resolvedMediaRoot = mediaRoot
+    try {
+      if (fs.statSync(inputPath).isDirectory()) {
+        const candidates = findChatFiles(inputPath)
+        if (candidates.length === 0) {
+          return { success: false, error: '文件夹内没有找到可识别的聊天记录文件（json/jsonl/txt）' }
+        }
+        filePath = candidates[0]
+        resolvedMediaRoot = resolvedMediaRoot || inputPath
+        console.log('[IpcMain] Resolved chat file from folder:', filePath)
+      }
+    } catch (error) {
+      console.error('[IpcMain] Failed to resolve import path:', error)
+    }
 
     try {
       // 发送进度：开始检测格式
@@ -106,7 +164,9 @@ export function registerChatHandlers(ctx: IpcContext): void {
       })
 
       // 使用流式导入（在 Worker 线程中执行）
-      const result = await worker.streamImport(filePath, (progress: ParseProgress) => {
+      const result = await worker.streamImport(
+        filePath,
+        (progress: ParseProgress) => {
         // 转发进度到渲染进程
         win.webContents.send('chat:importProgress', {
           stage: progress.stage,
@@ -115,8 +175,10 @@ export function registerChatHandlers(ctx: IpcContext): void {
           bytesRead: progress.bytesRead,
           totalBytes: progress.totalBytes,
           messagesProcessed: progress.messagesProcessed,
-        })
-      })
+          })
+        },
+        resolvedMediaRoot
+      )
 
       if (result.success) {
         console.log('[IpcMain] Stream import successful, sessionId:', result.sessionId)
@@ -499,6 +561,32 @@ export function registerChatHandlers(ctx: IpcContext): void {
   )
 
   /**
+   * 获取表情包分析数据（按 md5 聚合 + 双方频次）
+   */
+  ipcMain.handle(
+    'chat:getStickerAnalysis',
+    async (_, sessionId: string, filter?: { startTs?: number; endTs?: number }) => {
+      try {
+        return await worker.getStickerAnalysis(sessionId, filter)
+      } catch (error) {
+        console.error('获取表情包分析失败：', error)
+        return {
+          totalStickers: 0,
+          uniqueStickers: 0,
+          totalMessages: 0,
+          stickerRatio: 0,
+          members: [],
+          topStickers: [],
+          trend: [],
+          sharedCount: 0,
+          exclusive: [],
+          textEmoji: [],
+        }
+      }
+    }
+  )
+
+  /**
    * 获取打卡分析数据（火花榜 + 忠臣榜）
    */
   ipcMain.handle(
@@ -598,4 +686,48 @@ export function registerChatHandlers(ctx: IpcContext): void {
       return []
     }
   })
+}
+
+/**
+ * 在文件夹内查找聊天记录文件
+ * 优先返回能识别格式且体积最大的文件（通常就是主记录文件）
+ */
+function findChatFiles(rootDir: string, maxDepth = 3): string[] {
+  const found: Array<{ filePath: string; size: number }> = []
+  const exts = ['.json', '.jsonl', '.txt']
+
+  const walk = (dir: string, depth: number): void => {
+    if (depth > maxDepth) return
+    let entries: fs.Dirent[]
+    try {
+      entries = fs.readdirSync(dir, { withFileTypes: true })
+    } catch {
+      return
+    }
+    for (const entry of entries) {
+      const full = path.join(dir, entry.name)
+      if (entry.isDirectory()) {
+        // 跳过明显无关的目录，避免扫描过慢
+        if (['node_modules', '.git', '__MACOSX'].includes(entry.name)) continue
+        walk(full, depth + 1)
+        continue
+      }
+      if (!exts.some((ext) => entry.name.toLowerCase().endsWith(ext))) continue
+      try {
+        const stat = fs.statSync(full)
+        if (stat.size < 1024) continue // 忽略过小的文件（配置/清单）
+        found.push({ filePath: full, size: stat.size })
+      } catch {
+        // 忽略无法读取的文件
+      }
+    }
+  }
+
+  walk(rootDir, 0)
+  found.sort((a, b) => b.size - a.size)
+
+  // 只保留能识别格式的文件，并按体积降序
+  return found
+    .filter((item) => !!detectFormat(item.filePath))
+    .map((item) => item.filePath)
 }

@@ -532,6 +532,58 @@ export interface CheckInAnalysis {
   totalDays: number // 群聊总天数
 }
 
+// ==================== 表情包分析类型 ====================
+
+/**
+ * 成员表情包使用统计
+ */
+export interface StickerMemberStat {
+  memberId: number
+  name: string
+  stickerCount: number // 表情消息总数
+  uniqueCount: number // 独立表情种类数
+  totalMessages: number // 该成员总消息数
+  ratio: number // 表情消息占其消息的百分比
+  topLabel: string | null // 最常用表情展示名
+  topCount: number // 最常用表情次数
+}
+
+/**
+ * 单个表情包的各成员使用分布
+ */
+export interface StickerUsageByMember {
+  memberId: number
+  name: string
+  count: number
+}
+
+/**
+ * 表情包聚合项（按 md5 或内容指纹聚合）
+ */
+export interface StickerItem {
+  stickerId: string // md5 / 文本表情标识 / 内容哈希
+  label: string // 展示名
+  previewUrl: string | null // 可预览的网络地址（若有）
+  count: number // 总使用次数
+  byMember: StickerUsageByMember[] // 各成员使用次数
+}
+
+/**
+ * 表情包分析结果
+ */
+export interface StickerAnalysis {
+  totalStickers: number // 表情消息总数
+  uniqueStickers: number // 独立表情数
+  totalMessages: number // 会话总消息数
+  stickerRatio: number // 表情消息占比（%）
+  members: StickerMemberStat[] // 成员维度统计
+  topStickers: StickerItem[] // 热门表情 Top
+  trend: Array<{ date: string; count: number }> // 按天趋势
+  sharedCount: number // 双方都使用过的表情数
+  exclusive: Array<{ memberId: number; name: string; count: number }> // 各成员独有表情数
+  textEmoji: Array<{ label: string; count: number }> // 文字表情（[呲牙] 等）频次
+}
+
 // ==================== 关键词模板 ====================
 
 /**

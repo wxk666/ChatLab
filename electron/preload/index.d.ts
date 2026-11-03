@@ -16,6 +16,7 @@ import type {
   MentionAnalysis,
   LaughAnalysis,
   MemeBattleAnalysis,
+  StickerAnalysis,
   CheckInAnalysis,
   MemberWithStats,
 } from '../../src/types/analysis'
@@ -29,7 +30,16 @@ interface TimeFilter {
 
 interface ChatApi {
   selectFile: () => Promise<{ filePath?: string; format?: string; error?: string } | null>
-  import: (filePath: string) => Promise<{ success: boolean; sessionId?: string; error?: string }>
+  selectFolder: () => Promise<{
+    filePath?: string
+    format?: string
+    rootDir?: string
+    error?: string
+  } | null>
+  import: (
+    filePath: string,
+    mediaRoot?: string
+  ) => Promise<{ success: boolean; sessionId?: string; error?: string }>
   getSessions: () => Promise<AnalysisSession[]>
   getSession: (sessionId: string) => Promise<AnalysisSession | null>
   deleteSession: (sessionId: string) => Promise<boolean>
@@ -58,6 +68,7 @@ interface ChatApi {
   getMentionAnalysis: (sessionId: string, filter?: TimeFilter) => Promise<MentionAnalysis>
   getLaughAnalysis: (sessionId: string, filter?: TimeFilter, keywords?: string[]) => Promise<LaughAnalysis>
   getMemeBattleAnalysis: (sessionId: string, filter?: TimeFilter) => Promise<MemeBattleAnalysis>
+  getStickerAnalysis: (sessionId: string, filter?: TimeFilter) => Promise<StickerAnalysis>
   getCheckInAnalysis: (sessionId: string, filter?: TimeFilter) => Promise<CheckInAnalysis>
   // 成员管理
   getMembers: (sessionId: string) => Promise<MemberWithStats[]>

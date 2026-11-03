@@ -120,9 +120,36 @@ export const useSessionStore = defineStore(
     }
 
     /**
-     * 从指定路径执行导入（支持拖拽）
+     * 选择文件夹并导入
+     * 适用于导出目录：JSON 中的表情包相对路径会在该目录中被解析成真实图片
      */
-    async function importFileFromPath(filePath: string): Promise<{ success: boolean; error?: string }> {
+    async function importFolder(): Promise<{ success: boolean; error?: string }> {
+      try {
+        const result = await window.chatApi.selectFolder()
+        if (!result) {
+          return { success: false, error: '未选择文件夹' }
+        }
+        if (result.error) {
+          return { success: false, error: result.error }
+        }
+        if (!result.filePath) {
+          return { success: false, error: '文件夹内没有找到聊天记录文件' }
+        }
+        return await importFileFromPath(result.filePath, result.rootDir)
+      } catch (error) {
+        return { success: false, error: String(error) }
+      }
+    }
+
+    /**
+     * 从指定路径执行导入（支持拖拽）
+     * @param filePath 聊天记录文件路径（也可以是文件夹，主进程会自动定位）
+     * @param mediaRoot 媒体根目录（用于解析表情包相对路径）
+     */
+    async function importFileFromPath(
+      filePath: string,
+      mediaRoot?: string
+    ): Promise<{ success: boolean; error?: string }> {
       try {
         isImporting.value = true
         importProgress.value = {
@@ -144,22 +171,25 @@ export const useSessionStore = defineStore(
         const processQueue = async () => {
           if (isProcessing) return
           isProcessing = true
+          try {
+            while (queue.length > 0) {
+              const next = queue[0]
 
-          while (queue.length > 0) {
-            const next = queue[0]
-
-            if (next.stage !== currentStage) {
-              const elapsed = Date.now() - lastStageTime
-              if (elapsed < MIN_STAGE_TIME) {
-                await new Promise((resolve) => setTimeout(resolve, MIN_STAGE_TIME - elapsed))
+              if (next.stage !== currentStage) {
+                const elapsed = Date.now() - lastStageTime
+                if (elapsed < MIN_STAGE_TIME) {
+                  await new Promise((resolve) => setTimeout(resolve, MIN_STAGE_TIME - elapsed))
+                }
+                currentStage = next.stage
+                lastStageTime = Date.now()
               }
-              currentStage = next.stage
-              lastStageTime = Date.now()
-            }
 
-            importProgress.value = queue.shift()!
+              importProgress.value = queue.shift()!
+            }
+          } finally {
+            // 无论是否异常都必须复位，否则等待循环会永远卡住
+            isProcessing = false
           }
-          isProcessing = false
         }
 
         const unsubscribe = window.chatApi.onImportProgress((progress) => {
@@ -168,10 +198,25 @@ export const useSessionStore = defineStore(
           processQueue()
         })
 
-        const importResult = await window.chatApi.import(filePath)
+        const importResult = await window.chatApi.import(filePath, mediaRoot)
         unsubscribe()
 
+        // 等待进度队列排空（带看门狗：超过 20s 强制继续，防止卡死在导入完成页）
+        const waitStart = Date.now()
         while (queue.length > 0 || isProcessing) {
+          if (Date.now() - waitStart > 20000) {
+            console.error(
+              '[SessionStore] 导入进度队列等待超时，强制继续。queue=',
+              queue.length,
+              'isProcessing=',
+              isProcessing,
+              'lastStage=',
+              importProgress.value?.stage
+            )
+            queue.length = 0
+            isProcessing = false
+            break
+          }
           await new Promise((resolve) => setTimeout(resolve, 100))
         }
 
@@ -342,6 +387,7 @@ export const useSessionStore = defineStore(
       // 会话操作
       loadSessions,
       importFile,
+      importFolder,
       importFileFromPath,
       selectSession,
       deleteSession,

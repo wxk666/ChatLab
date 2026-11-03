@@ -1,11 +1,13 @@
-import { app, shell, BrowserWindow, protocol, nativeTheme } from 'electron'
-import { join } from 'path'
+import { app, shell, BrowserWindow, protocol, nativeTheme, net } from 'electron'
+import { join, dirname, resolve as resolvePath, sep } from 'path'
+import { pathToFileURL } from 'url'
 import { optimizer, is, platform } from '@electron-toolkit/utils'
 import * as fs from 'fs/promises'
 import { checkUpdate } from './update'
 import mainIpcMain from './ipcMain'
 import { initAnalytics, trackDailyActive } from './analytics'
 import { initProxy } from './network/proxy'
+import { getDbDirectory } from './worker/workerManager'
 
 class MainProcess {
   mainWindow: BrowserWindow | null
@@ -52,11 +54,46 @@ class MainProcess {
     // 注册应用协议
     app.setAsDefaultProtocolClient('chatlab')
 
+
     // 应用程序准备好之前注册
-    protocol.registerSchemesAsPrivileged([{ scheme: 'app', privileges: { secure: true, standard: true } }])
+    protocol.registerSchemesAsPrivileged([
+      { scheme: 'app', privileges: { secure: true, standard: true } },
+      {
+        scheme: 'chatlab-media',
+        privileges: { secure: true, standard: true, supportFetchAPI: true, stream: true, bypassCSP: true },
+      },
+    ])
 
     // 主应用程序事件
     this.mainAppEvents()
+  }
+
+  /**
+   * 注册本地媒体协议
+   * URL 形式：chatlab-media://<sessionId>/<fileName>
+   * 实际读取：<ChatLab 数据目录>/media/<sessionId>/<fileName>
+   */
+  registerMediaProtocol() {
+    protocol.handle('chatlab-media', async (request) => {
+      try {
+        const url = new URL(request.url)
+        const sessionId = decodeURIComponent(url.hostname)
+        const fileName = decodeURIComponent(url.pathname.replace(/^\/+/, ''))
+
+        const mediaRoot = join(dirname(getDbDirectory()), 'media', sessionId)
+        const target = resolvePath(mediaRoot, fileName)
+
+        // 防目录穿越
+        if (!target.startsWith(mediaRoot + sep)) {
+          return new Response('Forbidden', { status: 403 })
+        }
+
+        return await net.fetch(pathToFileURL(target).href)
+      } catch (error) {
+        console.error('[Main] Failed to serve media:', error)
+        return new Response('Not Found', { status: 404 })
+      }
+    })
   }
 
   // 创建主窗口
@@ -79,7 +116,10 @@ class MainProcess {
     nativeTheme.themeSource = 'light'
 
     this.mainWindow.once('ready-to-show', () => {
-      this.mainWindow?.show()
+      // TODO: 调试用（CHATLAB_HIDDEN=1 时不显示窗口），排查导入卡死后移除
+      if (!process.env.CHATLAB_HIDDEN) {
+        this.mainWindow?.show()
+      }
     })
 
     // 主窗口事件
@@ -108,6 +148,9 @@ class MainProcess {
 
       // 记录日活（用于统计操作系统版本、客户端版本，便于更好的适配客户端）
       trackDailyActive()
+
+      // 注册本地媒体协议（表情包等导入媒体）
+      this.registerMediaProtocol()
 
       // 创建主窗口
       console.log('[Main] Creating window...')

@@ -32,6 +32,7 @@ import {
   getMentionAnalysis,
   getLaughAnalysis,
   getMemeBattleAnalysis,
+  getStickerAnalysis,
   getCheckInAnalysis,
   searchMessages,
   getMessageContext,
@@ -101,6 +102,7 @@ const syncHandlers: Record<string, (payload: any) => any> = {
   getMentionAnalysis: (p) => getMentionAnalysis(p.sessionId, p.filter),
   getLaughAnalysis: (p) => getLaughAnalysis(p.sessionId, p.filter, p.keywords),
   getMemeBattleAnalysis: (p) => getMemeBattleAnalysis(p.sessionId, p.filter),
+  getStickerAnalysis: (p) => getStickerAnalysis(p.sessionId, p.filter),
   getCheckInAnalysis: (p) => getCheckInAnalysis(p.sessionId, p.filter),
 
   // AI 查询
@@ -120,7 +122,7 @@ const syncHandlers: Record<string, (payload: any) => any> = {
 // 异步消息处理器（流式操作）
 const asyncHandlers: Record<string, (payload: any, requestId: string) => Promise<any>> = {
   // 流式导入
-  streamImport: (p, id) => streamImport(p.filePath, id),
+  streamImport: (p, id) => streamImport(p.filePath, id, { mediaRoot: p.mediaRoot }),
   // 流式解析文件信息（用于合并预览）
   streamParseFileInfo: (p, id) => streamParseFileInfo(p.filePath, id),
 }

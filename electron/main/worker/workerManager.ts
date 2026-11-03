@@ -289,6 +289,10 @@ export async function getMemeBattleAnalysis(sessionId: string, filter?: any): Pr
   return sendToWorker('getMemeBattleAnalysis', { sessionId, filter })
 }
 
+export async function getStickerAnalysis(sessionId: string, filter?: any): Promise<any> {
+  return sendToWorker('getStickerAnalysis', { sessionId, filter })
+}
+
 export async function getCheckInAnalysis(sessionId: string, filter?: any): Promise<any> {
   return sendToWorker('getCheckInAnalysis', { sessionId, filter })
 }
@@ -363,9 +367,10 @@ export async function streamParseFileInfo(
  */
 export async function streamImport(
   filePath: string,
-  onProgress?: (progress: ParseProgress) => void
+  onProgress?: (progress: ParseProgress) => void,
+  mediaRoot?: string
 ): Promise<{ success: boolean; sessionId?: string; error?: string }> {
-  return sendToWorkerWithProgress('streamImport', { filePath }, onProgress)
+  return sendToWorkerWithProgress('streamImport', { filePath, mediaRoot }, onProgress)
 }
 
 /**

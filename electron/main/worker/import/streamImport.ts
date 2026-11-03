@@ -18,6 +18,7 @@ import {
   type ParsedMessage,
 } from '../../parser'
 import { getDbDir } from '../core'
+import { resolveStickerMedia } from './mediaResolver'
 import { initPerfLog, logPerf, logPerfDetail, resetPerfLog, logInfo, logError, logSummary } from '../core'
 
 /** 流式导入结果 */
@@ -203,7 +204,16 @@ function createIndexes(db: Database.Database): void {
  * @param filePath 文件路径
  * @param requestId 请求ID（用于进度回调）
  */
-export async function streamImport(filePath: string, requestId: string): Promise<StreamImportResult> {
+export interface StreamImportOptions {
+  /** 导出文件夹根目录（用于解析 JSON 中的相对媒体路径） */
+  mediaRoot?: string
+}
+
+export async function streamImport(
+  filePath: string,
+  requestId: string,
+  options?: StreamImportOptions
+): Promise<StreamImportResult> {
   // 检测格式
   const formatFeature = detectFormat(filePath)
   if (!formatFeature) {
@@ -634,12 +644,42 @@ export async function streamImport(filePath: string, requestId: string): Promise
       bytesRead: 0,
       totalBytes: 0,
       messagesProcessed: totalMessageCount,
-      percentage: 100,
+      percentage: 96,
       message: '正在创建索引...',
     })
     logPerf('开始创建索引', totalMessageCount)
     createIndexes(db)
     logPerf('索引创建完成', totalMessageCount)
+
+    // 解析表情包的相对媒体路径（文件夹导入时）
+    if (options?.mediaRoot && fs.existsSync(options.mediaRoot)) {
+      sendProgress(requestId, {
+        stage: 'importing',
+        bytesRead: 0,
+        totalBytes: 0,
+        messagesProcessed: totalMessageCount,
+        percentage: 97,
+        message: '正在关联表情包文件...',
+      })
+      try {
+        const mediaResult = resolveStickerMedia(db, sessionId, getDbDir(), options.mediaRoot, (done, total) => {
+          sendProgress(requestId, {
+            stage: 'importing',
+            bytesRead: 0,
+            totalBytes: 0,
+            messagesProcessed: totalMessageCount,
+            percentage: 97 + Math.round((done / Math.max(total, 1)) * 2),
+            message: `正在关联表情包文件... ${done}/${total}`,
+          })
+        })
+        logInfo(
+          `表情包媒体解析完成：扫描 ${mediaResult.scanned} 条，命中 ${mediaResult.matched} 条，复制 ${mediaResult.copied} 个文件`
+        )
+      } catch (err) {
+        // 媒体解析失败不应影响导入结果
+        logError('表情包媒体解析失败', err instanceof Error ? err : undefined)
+      }
+    }
 
     // 最终 WAL checkpoint
     sendProgress(requestId, {
@@ -647,7 +687,7 @@ export async function streamImport(filePath: string, requestId: string): Promise
       bytesRead: 0,
       totalBytes: 0,
       messagesProcessed: totalMessageCount,
-      percentage: 100,
+      percentage: 99,
       message: '正在优化数据库...',
     })
     doCheckpoint()

@@ -11,6 +11,7 @@ import AITab from '@/components/analysis/AITab.vue'
 import OverviewTab from './components/OverviewTab.vue'
 import QuotesTab from './components/QuotesTab.vue'
 import MemberTab from './components/MemberTab.vue'
+import StickerTab from './components/StickerTab.vue'
 import PageHeader from '@/components/layout/PageHeader.vue'
 import { useSessionStore } from '@/stores/session'
 import { useLayoutStore } from '@/stores/layout'
@@ -44,6 +45,7 @@ const isInitialLoad = ref(true) // 用于跳过初始加载时的 watch 触发�
 const tabs = [
   { id: 'overview', label: '总览', icon: 'i-heroicons-chart-pie' },
   { id: 'quotes', label: '语录', icon: 'i-heroicons-chat-bubble-left-right' },
+  { id: 'stickers', label: '表情包', icon: 'i-heroicons-face-smile' },
   { id: 'member', label: '成员', icon: 'i-heroicons-user-group' },
   { id: 'ai', label: 'AI实验室', icon: 'i-heroicons-sparkles' },
 ]
@@ -302,6 +304,12 @@ onMounted(() => {
             <QuotesTab
               v-else-if="activeTab === 'quotes'"
               :key="'quotes-' + selectedYear"
+              :session-id="currentSessionId!"
+              :time-filter="timeFilter"
+            />
+            <StickerTab
+              v-else-if="activeTab === 'stickers'"
+              :key="'stickers-' + selectedYear"
               :session-id="currentSessionId!"
               :time-filter="timeFilter"
             />

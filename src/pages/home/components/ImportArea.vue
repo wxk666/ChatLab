@@ -41,6 +41,19 @@ async function handleClickImport() {
   }
 }
 
+// 处理文件夹导入（自动关联表情包图片）
+async function handleClickImportFolder() {
+  importError.value = null
+  hasImportLog.value = false
+  const result = await sessionStore.importFolder()
+  if (!result.success && result.error && result.error !== '未选择文件夹') {
+    importError.value = result.error
+    await checkImportLog()
+  } else if (result.success && sessionStore.currentSessionId) {
+    await navigateToSession(sessionStore.currentSessionId)
+  }
+}
+
 // 处理文件拖拽
 async function handleFileDrop({ paths }: { files: File[]; paths: string[] }) {
   if (paths.length === 0) {
@@ -85,6 +98,8 @@ function getProgressText(): string {
       return '正在解析消息...'
     case 'saving':
       return '正在写入数据库...'
+    case 'importing':
+      return '正在处理数据...'
     case 'done':
       return '导入完成'
     case 'error':
@@ -117,7 +132,7 @@ function getProgressDetail(): string {
   <div class="flex flex-col items-center space-y-6">
     <!-- Import Drop Zone -->
     <FileDropZone
-      :accept="['.json', '.jsonl', '.txt']"
+      :accept="['*']"
       :disabled="isImporting"
       class="w-full max-w-4xl"
       @files="handleFileDrop"
@@ -160,7 +175,7 @@ function getProgressDetail(): string {
             <template v-else>
               <!-- 默认状态 -->
               <p class="text-lg font-semibold text-gray-900 dark:text-white">
-                {{ isDragOver ? '松开鼠标导入文件' : '点击选择或拖拽聊天记录导入' }}
+                {{ isDragOver ? '松开鼠标导入文件/文件夹' : '点击选择或拖拽聊天记录导入' }}
               </p>
             </template>
           </div>
@@ -177,6 +192,12 @@ function getProgressDetail(): string {
       <UButton v-if="hasImportLog" size="xs" @click="openLatestImportLog">查看导入日志</UButton>
     </div>
 
-    <UButton @click="openTutorial">查看聊天记录导入教程 →</UButton>
+    <div class="flex flex-wrap items-center justify-center gap-3">
+      <UButton color="neutral" variant="outline" :disabled="isImporting" @click="handleClickImportFolder">
+        <UIcon name="i-heroicons-folder-open" class="mr-1 h-4 w-4" />
+        选择文件夹导入（含表情包图片）
+      </UButton>
+      <UButton @click="openTutorial">查看聊天记录导入教程 →</UButton>
+    </div>
   </div>
 </template>

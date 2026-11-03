@@ -18,6 +18,7 @@ import type {
   LaughAnalysis,
   CheckInAnalysis,
   MemeBattleAnalysis,
+  StickerAnalysis,
   MemberWithStats,
 } from '../../src/types/analysis'
 import type { FileParseInfo, ConflictCheckResult, MergeParams, MergeResult } from '../../src/types/format'
@@ -91,10 +92,27 @@ const chatApi = {
   },
 
   /**
-   * 导入聊天记录
+   * 选择聊天记录所在文件夹（用于导出目录导入，可解析表情包相对路径）
    */
-  import: (filePath: string): Promise<{ success: boolean; sessionId?: string; error?: string }> => {
-    return ipcRenderer.invoke('chat:import', filePath)
+  selectFolder: (): Promise<{
+    filePath?: string
+    format?: string
+    rootDir?: string
+    error?: string
+  } | null> => {
+    return ipcRenderer.invoke('chat:selectFolder')
+  },
+
+  /**
+   * 导入聊天记录
+   * @param filePath 聊天记录文件路径
+   * @param mediaRoot 导出文件夹根目录（可选，用于解析表情包等媒体相对路径）
+   */
+  import: (
+    filePath: string,
+    mediaRoot?: string
+  ): Promise<{ success: boolean; sessionId?: string; error?: string }> => {
+    return ipcRenderer.invoke('chat:import', filePath, mediaRoot)
   },
 
   /**
@@ -304,6 +322,16 @@ const chatApi = {
     filter?: { startTs?: number; endTs?: number }
   ): Promise<MemeBattleAnalysis> => {
     return ipcRenderer.invoke('chat:getMemeBattleAnalysis', sessionId, filter)
+  },
+
+  /**
+   * 获取表情包分析数据（按 md5 聚合 + 双方频次）
+   */
+  getStickerAnalysis: (
+    sessionId: string,
+    filter?: { startTs?: number; endTs?: number }
+  ): Promise<StickerAnalysis> => {
+    return ipcRenderer.invoke('chat:getStickerAnalysis', sessionId, filter)
   },
 
   /**

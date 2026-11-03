@@ -34,7 +34,11 @@ export {
   getMemeBattleAnalysis,
   getMentionAnalysis,
   getLaughAnalysis,
+  getStickerAnalysis,
 } from './advanced'
+
+// 表情包分析类型
+export type { StickerAnalysisResult, StickerItem, StickerMemberStat } from './advanced'
 
 // 聊天记录查询
 export {

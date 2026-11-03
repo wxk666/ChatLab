@@ -12,6 +12,10 @@ export { getNightOwlAnalysis, getDragonKingAnalysis, getDivingAnalysis, getCheck
 // 行为分析：自言自语、斗图
 export { getMonologueAnalysis, getMemeBattleAnalysis } from './behavior'
 
+// 表情包分析（按 md5 聚合）
+export { getStickerAnalysis } from './sticker'
+export type { StickerAnalysisResult, StickerItem, StickerMemberStat } from './sticker'
+
 // 社交分析：@ 互动、含笑量
 export { getMentionAnalysis, getLaughAnalysis } from './social'
 
